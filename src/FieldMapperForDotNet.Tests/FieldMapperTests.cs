@@ -180,7 +180,7 @@ namespace FieldMapperForDotNet.Tests
             Assert.AreEqual(result.Count, 0);
         }
 
-        [TestMethod]
+            [TestMethod]
         public void FieldMapperTests_GetAndMap_FirstName()
         {
             // Arrange
@@ -203,7 +203,7 @@ namespace FieldMapperForDotNet.Tests
         [ExpectedException(typeof(ArgumentException))]
         public void FieldMapperTests_Init_NullContent_ShouldThrowArgumentException()
         {
-            IEnumerable<string> mappings = Enumerable.Empty<string>();
+            var mappings = Enumerable.Empty<string>().ToList();
             var parser = new FieldMapper();
             parser.Get(null, mappings);
         }
@@ -212,7 +212,7 @@ namespace FieldMapperForDotNet.Tests
         [ExpectedException(typeof(ArgumentException))]
         public void FieldMapperTests_Init_EmptyContent_ShouldThrowArgumentException()
         {
-            var mappings = Enumerable.Empty<string>();
+            var mappings = Enumerable.Empty<string>().ToList();
             var parser = new FieldMapper();
             parser.Get("", mappings);
         }
@@ -221,7 +221,7 @@ namespace FieldMapperForDotNet.Tests
         [ExpectedException(typeof(ArgumentException))]
         public void FieldMapperTests_Init_WhitespaceContent_ShouldThrowArgumentException()
         {
-            var mappings = Enumerable.Empty<string>();
+            var mappings = Enumerable.Empty<string>().ToList();
             var parser = new FieldMapper();
             parser.Get("     ", mappings);
         }
@@ -240,7 +240,7 @@ namespace FieldMapperForDotNet.Tests
         public void FieldMapperTests_Init_EmptyKeys_ShouldThrowArgumentException()
         {
             var content = "First Name: Joe";
-            var mappings = Enumerable.Empty<string>();
+            var mappings = Enumerable.Empty<string>().ToList();
             var parser = new FieldMapper();
             parser.Get(content, mappings);
         }

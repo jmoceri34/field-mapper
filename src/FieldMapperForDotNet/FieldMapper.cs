@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 
 namespace FieldMapperForDotNet
 {
@@ -39,6 +38,7 @@ namespace FieldMapperForDotNet
         /// <returns></returns>
         public string PreviewContent(string content, IEnumerable<string> mappings)
         {
+            // whether or not to decode encoded characters and strip html in the content, by default is true
             if (configuration.options.DeEntitizeContent)
             {
                 var doc = new HtmlDocument();
@@ -47,43 +47,99 @@ namespace FieldMapperForDotNet
                 content = HtmlEntity.DeEntitize(doc.DocumentNode.InnerText);
             }
 
-            if (configuration.options.SeparateByLineBreaks)
-            {
-                content = Regex.Replace(content, @"\s{5,}", Environment.NewLine);
-            }
-
+            // replace all line breaks with spaces
             content = content.Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ").Replace(Environment.NewLine, " ");
 
+            // so we can create a single line break between mappings, this helps with parsing
             SeparateMappingsByLineBreaks();
 
             return content;
 
             void SeparateMappingsByLineBreaks()
             {
+                // for each mapping
                 foreach (var searchMapping in mappings)
                 {
+                    // get the very first occurrence of it in the content
                     var startIndex = GetIndexOfKey(content, mappings, searchMapping);
                     var nextLocation = int.MaxValue;
 
+                    // if we haven't added a line break yet, and found a mapping
                     if (!content.Contains(Environment.NewLine) && startIndex != -1)
                     {
+                        // insert it right before it
                         content = content.Insert(startIndex, Environment.NewLine);
                     }
 
+                    // check through the other mappings
                     foreach (var key in mappings.Where(k => k != searchMapping))
                     {
+                        // searching past the mapping found
                         var loc = content.IndexOf(key, startIndex + searchMapping.Length);
 
+                        // if we found the mapping, and it's the earliest one yet
                         if (loc != -1 && loc < nextLocation)
                         {
+                            // set it
                             nextLocation = loc;
                         }
                     }
 
+                    // if we ended up finding the next location
                     if (nextLocation != int.MaxValue)
                     {
+                        // insert a line break before it
                         content = content.Insert(nextLocation, Environment.NewLine);
                     }
+                }
+            }
+
+            int GetIndexOfKey(string content, IEnumerable<string> mappings, string searchKey)
+            {
+                var nestedKey = false;
+
+                // get the keys we're not currently searching for
+                var nonSearchedKeys = mappings.Where(k => k != searchKey);
+
+                // check the non searched keys to see if they contain the actual search key
+                foreach (var key in nonSearchedKeys)
+                {
+                    if (key.Contains(searchKey))
+                    {
+                        // if it does then we found a nested key
+                        nestedKey = true;
+                    }
+                }
+
+                // if we found a nested key
+                if (nestedKey)
+                {
+                    var tempContent = content;
+
+                    // get an ordered list of mappings by length with the largest first
+                    var orderedKeys = mappings.OrderByDescending(m => m.Length).ToList();
+                    for (var i = 0; i < mappings.Count(); i++)
+                    {
+                        // convert the keys to uppercase to separate them, this requires the mappings to not be uppercase beforehand
+                        tempContent = tempContent.Replace(orderedKeys[i], orderedKeys[i].ToUpperInvariant());
+                    }
+
+                    // find the keys larger than the search key from the non searched ones
+                    var nonSearchedLargerKeys = nonSearchedKeys.Where(k => k.Length > searchKey.Length);
+
+                    foreach (var key in nonSearchedLargerKeys)
+                    {
+                        // convert all of those to lower
+                        tempContent = tempContent.Replace(key.ToUpperInvariant(), key.ToLowerInvariant());
+                    }
+
+                    // to isolate the search key
+                    return tempContent.IndexOf(searchKey.ToUpperInvariant());
+                }
+                else
+                {
+                    // otherwise find the first occurrence of it in the content
+                    return content.IndexOf(searchKey);
                 }
             }
         }
@@ -94,72 +150,48 @@ namespace FieldMapperForDotNet
         /// <param name="content">The string content.</param>
         /// <param name="mappings">The mappings.</param>
         /// <returns></returns>
-        public IDictionary<string, string> Get(string content, IEnumerable<string> mappings)
+        public IDictionary<string, string> Get(string content, IList<string> mappings)
         {
+            // validate content and mappings and throw and error if it fails
             Validate();
 
+            // when we preview the content, we apply config-specific logic, remove all line breaks and re-add them between the mappings
             content = PreviewContent(content, mappings);
 
             var result = new Dictionary<string, string>();
 
+            // use a string reader to parse the content and search for mappings
             using (var reader = new StringReader(content))
             {
-                var line = reader.ReadLine();
-                var orderedMappings = mappings.OrderByDescending(m => m.Length).ToList();
+                var line = reader.ReadLine()?.Trim();
+
                 while (line != null)
                 {
-                    line = line.Trim();
-                    for (var i = 0; i < orderedMappings.Count(); i++)
+                    // for each line check to see if any mappings are on it
+                    for (var i = 0; i < mappings.Count(); i++)
                     {
-                        var mapping = orderedMappings[i];
-                        if (line.Contains(mapping) && line.IndexOf(mapping) == 0)
+                        var mapping = mappings[i];
+
+                        // we found a mapping on a line and the dictionary doesn't contain the mapping
+                        if (line.Contains(mapping) && line.IndexOf(mapping) == 0 && !result.ContainsKey(mapping))
                         {
+                            // since mappings are per line get everything after it
                             var value = line.Substring(line.IndexOf(mapping) + mapping.Length).Trim();
-                            var startIndex = GetIndexOfKey(content, mappings, mapping);
 
-                            var nextLineValue = GetMappingValueOnSubsequentLines(content.Substring(startIndex + line.Length));
-
-                            value = value.Trim();
-
-                            if (!result.ContainsKey(mapping))
-                            {
-                                result.Add(mapping, value);
-                            }
-
+                            // add it
+                            result.Add(mapping, value);
+                            
+                            // mappings are separated by line breaks above so once you found it don't check anymore
                             break;
                         }
                     }
 
+                    // get the next line
                     line = reader.ReadLine();
                 }
             }
 
             return result;
-
-            string GetMappingValueOnSubsequentLines(string subContent)
-            {
-                var result = string.Empty;
-
-                using (var reader = new StringReader(subContent))
-                {
-                    var line = reader.ReadLine();
-
-                    while (line != null)
-                    {
-                        foreach (var mapping in mappings)
-                        {
-                            if (line.Contains(mapping))
-                            {
-                                return result.Trim(' ', '|');
-                            }
-                        }
-
-                        line = reader.ReadLine();
-                    }
-                }
-
-                return result.Trim(' ', '|');
-            }
 
             void Validate()
             {
@@ -182,51 +214,6 @@ namespace FieldMapperForDotNet
                 {
                     throw new ArgumentException("Duplicate mappings found. Please make sure they are all unique.");
                 }
-            }
-        }
-
-        /// <summary>
-        /// Internal method used to handle various mapping issues when trying to retrieve the right index
-        /// </summary>
-        /// <param name="content">The string content.</param>
-        /// <param name="mappings">The mappings.</param>
-        /// <param name="searchKey">The mapping it is looking for.</param>
-        /// <returns></returns>
-        private int GetIndexOfKey(string content, IEnumerable<string> mappings, string searchKey)
-        {
-            var nestedKey = false;
-            var nonSearchedKeys = mappings.Where(k => k != searchKey);
-
-            foreach (var key in nonSearchedKeys)
-            {
-                if (key.Contains(searchKey))
-                {
-                    nestedKey = true;
-                }
-            }
-
-            if (nestedKey)
-            {
-                var tempContent = content;
-
-                var orderedKeys = mappings.OrderByDescending(m => m.Length).ToList();
-                for (var i = 0; i < orderedKeys.Count(); i++)
-                {
-                    tempContent = tempContent.Replace(orderedKeys[i], orderedKeys[i].ToUpperInvariant());
-                }
-
-                var nonSearchedLargerKeys = nonSearchedKeys.Where(k => k.Length > searchKey.Length);
-
-                foreach (var key in nonSearchedLargerKeys)
-                {
-                    tempContent = tempContent.Replace(key.ToUpperInvariant(), key.ToLowerInvariant());
-                }
-
-                return tempContent.IndexOf(searchKey.ToUpperInvariant());
-            }
-            else
-            {
-                return content.IndexOf(searchKey);
             }
         }
     }

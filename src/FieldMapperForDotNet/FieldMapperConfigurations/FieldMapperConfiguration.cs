@@ -11,14 +11,13 @@
         public readonly FieldMapperConfigurationOptions options;
 
         /// <summary>
-        /// By default initalizes the options with <see cref="FieldMapperConfigurationOptions.DeEntitizeContent"/> as true and <see cref="FieldMapperConfigurationOptions.SeparateByLineBreaks"/> as true.
+        /// By default initalizes the options with <see cref="FieldMapperConfigurationOptions.DeEntitizeContent"/> as true
         /// </summary>
         public FieldMapperConfiguration()
         {
             options = new FieldMapperConfigurationOptions
             {
-                DeEntitizeContent = true,
-                SeparateByLineBreaks = true
+                DeEntitizeContent = true
             };
         }
     }
